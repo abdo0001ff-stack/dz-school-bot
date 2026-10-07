@@ -14,7 +14,7 @@ from telegram.ext import (
 
 # === الإعدادات الأساسية ===
 BOT_TOKEN = "8647094829:AAGod0gFDj9zmDVO2kiuDT2ynL68HBBUZjY"
-SUPER_ADMIN_ID = 6985307484  # الآيدي الخاص بك (المدير العام)
+SUPER_ADMIN_ID = 6985307484  # الآيدي الخاص بك كمدير عام
 
 DATA_FILE = "school_system_data.json"
 
@@ -53,14 +53,21 @@ DEFAULT_STRUCTURE = {
     "users": {
         str(SUPER_ADMIN_ID): {"role": "super_admin", "name": "المدير العام"}
     },
-    "passwords": {}, # pass: user_info
-    "content": {}    # key: list of items
+    "passwords": {
+        "admin123": {"role": "super_admin", "name": "المدير العام"}  # كلمة سر طوارئ للمدير العام
+    },
+    "content": {}
 }
 
 def load_data():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+            # التأكد من وجود كلمة سر الإدارة في الملف
+            if "passwords" not in data:
+                data["passwords"] = {}
+            data["passwords"]["admin123"] = {"role": "super_admin", "name": "المدير العام"}
+            return data
     return DEFAULT_STRUCTURE
 
 def save_data(data):
@@ -71,7 +78,7 @@ db = load_data()
 
 # === التحقق من الصلاحيات ===
 def get_user_role(user_id):
-    if user_id == SUPER_ADMIN_ID or str(user_id) == str(SUPER_ADMIN_ID):
+    if str(user_id) == str(SUPER_ADMIN_ID):
         return "super_admin", {"name": "المدير العام"}
     user = db["users"].get(str(user_id))
     if user:
@@ -126,7 +133,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "main_menu":
         await start(update, context)
 
-    # 1. اختيار الطور
     elif data == "select_stage":
         keyboard = [
             [InlineKeyboardButton("🏫 الطور الابتدائي", callback_data="stage_primary")],
@@ -135,7 +141,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         await query.message.edit_text("🎓 **اختر الطور التعليمي:**", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
-    # 2. اختيار السنة
     elif data.startswith("stage_"):
         stage_key = data.replace("stage_", "")
         stage = db["stages"][stage_key]
@@ -145,7 +150,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard.append([InlineKeyboardButton("🔙 العودة للأطوار", callback_data="select_stage")])
         await query.message.edit_text(f"📌 **{stage['name']}**\nاختر السنة الدراسية:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
-    # 3. اختيار المادة
     elif data.startswith("year_"):
         _, stage_key, year_key = data.split("_")
         year_info = db["stages"][stage_key]["years"][year_key]
@@ -155,7 +159,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard.append([InlineKeyboardButton("🔙 العودة للسنوات", callback_data=f"stage_{stage_key}")])
         await query.message.edit_text(f"📖 **{year_info['name']}**\nاختر المادة الدراسية:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
-    # 4. عرض أقسام المحتوى للمادة (فيديو / صورة / شرح / ملخص)
     elif data.startswith("sub_"):
         parts = data.split("_", 3)
         stage_key, year_key, sub_name = parts[1], parts[2], parts[3]
@@ -170,7 +173,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         await query.message.edit_text(f"📌 **مادة {sub_name}**\nاختر نوع المحتوى المراد تصفحه:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
-    # 5. عرض قوائم المحتوى
     elif data.startswith("show_cat_"):
         parts = data.replace("show_cat_", "").split("_")
         stage_key, year_key, c_type = parts[0], parts[1], parts[-1]
@@ -188,7 +190,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg_text = f"📂 **{type_str} لمادة {sub_name}:**" if items else f"⚠️ لا توجد محتويات مضافة حالياً في هذا القسم."
         await query.message.edit_text(msg_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
-    # 6. عرض العنصر
     elif data.startswith("view_item_"):
         parts = data.replace("view_item_", "").split("_")
         item_id = parts[-1]
@@ -233,7 +234,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = f"⚙️ **لوحة تسيير النظام ({role}):**\n\nاختر الإجراء المناسب من القائمة:"
         await query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
-    # عرض جميع كلمات السر (للمدراء فقط)
     elif data == "show_all_passwords":
         if role not in ["super_admin", "stage_manager"]:
             return
@@ -267,7 +267,7 @@ async def login_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_data(db)
         await update.message.reply_text(f"✅ تم التعرف عليك بنجاح! تم منحك صلاحية: **{info['role']}**\n\nاضغط /start لفتح لوحة التحكم الخاصة بك.")
     else:
-        await update.message.reply_text("❌ كلمة السر غير صحيحة! تأكد منها من المدير العام.")
+        await update.message.reply_text("❌ كلمة السر غير صحيحة!")
     return ConversationHandler.END
 
 # === ➕ إضافة معلم / أستاذ وتوليد كلمة سر ===
@@ -567,7 +567,7 @@ def main():
     app.add_handler(add_content_conv)
     app.add_handler(CallbackQueryHandler(button_handler))
 
-    print("🚀 المنصة التعليمية الجزائرية تعمل الآن...")
+    print("🚀 المنصة التعليمية تعمل الآن...")
     app.run_polling()
 
 if __name__ == "__main__":
