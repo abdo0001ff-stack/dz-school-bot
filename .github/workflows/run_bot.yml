@@ -4,6 +4,9 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
+  schedule:
+    # إعادة تشغيل البوت أوتوماتيكياً كل بضع ساعات لضمان استمراريته
+    - cron: '0 */5 * * *'
 
 jobs:
   run-bot:
@@ -26,4 +29,3 @@ jobs:
     - name: Run Bot
       run: |
         python bot.py
-
