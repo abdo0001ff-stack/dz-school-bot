@@ -13,20 +13,24 @@ from telegram.ext import (
     ConversationHandler,
 )
 
-logging.basicConfig(level=logging.INFO)
+# إعداد اللوج لمعرفة الأخطاء في GitHub Actions
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 
-# === التوكن الخاص بك ===
+# === التوكن الجديد والمُعرف الخاص بك ===
 BOT_TOKEN = "8673709137:AAHHeT3uVc17MaXJyvTX4GlAtA8si7V6bVc"
-MY_USER_ID = 6985307484  # الآيدي الخاص بك للتجربة الكاملة
+MY_USER_ID = 6985307484  # الآيدي الخاص بك كمدير عام
 
 DATA_FILE = "school_system_data.json"
 
 # حالات المحادثات التفاعلية
 (
     ADD_TEACHER_TYPE, ADD_TEACHER_YEAR, ADD_TEACHER_SUB,
-    CHANGE_PASS_SELECT, CHANGE_PASS_NEW, LOGIN_PASS,
+    LOGIN_PASS,
     ADD_CONTENT_STAGE, ADD_CONTENT_YEAR, ADD_CONTENT_SUB, ADD_CONTENT_TYPE, ADD_CONTENT_TITLE, ADD_CONTENT_FILE
-) = range(12)
+) = range(10)
 
 # === الهيكلية الأساسية للنظام التعليمي الجزائري ===
 DEFAULT_STRUCTURE = {
@@ -67,24 +71,28 @@ def load_data():
                 data = json.load(f)
                 if "passwords" not in data:
                     data["passwords"] = {}
+                if "users" not in data:
+                    data["users"] = {}
                 data["passwords"]["admin123"] = {"role": "super_admin", "name": "المدير العام"}
                 data["users"][str(MY_USER_ID)] = {"role": "super_admin", "name": "المدير العام والتنفيذي"}
                 return data
-        except Exception:
-            pass
+        except Exception as e:
+            logging.error(f"Error loading JSON: {e}")
     return DEFAULT_STRUCTURE
 
 def save_data(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
+    try:
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        logging.error(f"Error saving JSON: {e}")
 
 db = load_data()
 
-# === تحديد الصلاحية تلقائياً للـ ID الخاص بك ===
 def get_user_role(user_id):
     if str(user_id) == str(MY_USER_ID):
         return "super_admin", {"name": "المدير العام"}
-    user = db["users"].get(str(user_id))
+    user = db.get("users", {}).get(str(user_id))
     if user:
         return user.get("role"), user
     return "student", None
@@ -98,7 +106,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🔑 تسجيل الدخول بكلمة السر", callback_data="login_by_pass")]
     ]
 
-    # إتاحة لوحة الإدارة للـ ID الخاص بك ولجميع المدراء والمدرسين
     if role in ["super_admin", "stage_manager", "primary_teacher", "middle_teacher"]:
         keyboard.append([InlineKeyboardButton("⚙️ لوحة تحكم الإدارة والأستاذ", callback_data="admin_panel")])
 
@@ -162,7 +169,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sub_name = "_".join(parts[2:-1])
         full_key = f"{stage_key}_{year_key}_{sub_name}"
 
-        items = [i for i in db["content"].get(full_key, []) if i.get("type") == c_type]
+        items = [i for i in db.get("content", {}).get(full_key, []) if i.get("type") == c_type]
         keyboard = [[InlineKeyboardButton(f"📄 {item['title']}", callback_data=f"view_item_{full_key}_{item['id']}")] for item in items]
         keyboard.append([InlineKeyboardButton("🔙 العودة لأقسام المادة", callback_data=f"sub_{stage_key}_{year_key}_{sub_name}")])
         
@@ -170,31 +177,29 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg_text = f"📂 **{type_str} لمادة {sub_name}:**" if items else f"⚠️ لا توجد محتويات مضافة حالياً."
         await query.message.edit_text(msg_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
-    # لوحة الإدارة (متاحة لجميع أدواره والإدارة)
     elif data == "admin_panel":
         if role == "student":
             return
         
         keyboard = []
-        # السماح لجميع أجهزة الإدارة بإضافة أستاذ وعرض كلمات السر
         if role in ["super_admin", "stage_manager"]:
-            keyboard.append([InlineKeyboardButton("➕ إضافة معلم / أستاذ جديد (توليد كلمة سر)", callback_data="add_teacher_start")])
+            keyboard.append([InlineKeyboardButton("➕ إضافة معلم / أستاذ جديد", callback_data="add_teacher_start")])
             keyboard.append([InlineKeyboardButton("🔑 عرض جميع كلمات السر المولدة", callback_data="show_all_passwords")])
         
         keyboard.append([InlineKeyboardButton("➕ نشر درس / محتوى جديد", callback_data="add_content_start")])
         keyboard.append([InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="main_menu")])
 
-        text = f"⚙️ **لوحة تسيير النظام والتحكم ({role}):**"
+        text = f"⚙️ **لوحة تسيير النظام ({role}):**"
         await query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
     elif data == "show_all_passwords":
         if role not in ["super_admin", "stage_manager"]:
             return
         
-        if not db["passwords"]:
+        if not db.get("passwords"):
             msg_text = "🔑 لا توجد كلمات سر مسجلة حالياً."
         else:
-            msg_text = "🔑 **قائمة كلمات السر العشوائية المسجلة للأساتذة:**\n\n"
+            msg_text = "🔑 **قائمة كلمات السر المولدة للأساتذة:**\n\n"
             for code, u_info in db["passwords"].items():
                 role_name = u_info.get("role", "أستاذ")
                 sub = u_info.get("sub", "جميع المواد")
@@ -213,7 +218,7 @@ async def login_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pass_code = update.message.text.strip()
     user_id = update.effective_user.id
 
-    if pass_code in db["passwords"]:
+    if pass_code in db.get("passwords", {}):
         info = db["passwords"][pass_code]
         db["users"][str(user_id)] = info
         save_data(db)
@@ -222,7 +227,6 @@ async def login_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ كلمة السر غير صحيحة!")
     return ConversationHandler.END
 
-# === إضافة أستاذ مع توليد كلمة سر عشوائية فورية ===
 async def add_teacher_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     keyboard = [
@@ -260,7 +264,6 @@ async def add_teacher_year(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.edit_text("اختر المادة الدراسية لتحديد النصاب:", reply_markup=InlineKeyboardMarkup(keyboard))
         return ADD_TEACHER_SUB
     else:
-        # توليد كلمة سر عشوائية لمعلم الابتدائي
         random_pass = secrets.token_hex(3)
         user_info = {"role": "primary_teacher", "stage": "primary", "year": y_key}
         db["passwords"][random_pass] = user_info
@@ -280,7 +283,6 @@ async def add_teacher_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     sub_name = query.data.replace("tsub_", "")
     
-    # توليد كلمة سر عشوائية لأستاذ المتوسط
     random_pass = secrets.token_hex(3)
     user_info = {"role": "middle_teacher", "stage": "middle", "year": context.user_data["t_year"], "sub": sub_name}
     db["passwords"][random_pass] = user_info
@@ -367,6 +369,9 @@ async def add_content_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif msg.document:
         file_id = msg.document.file_id
 
+    if "content" not in db:
+        db["content"] = {}
+
     if full_key not in db["content"]:
         db["content"][full_key] = []
 
@@ -429,8 +434,8 @@ def main():
     app.add_handler(add_content_conv)
     app.add_handler(CallbackQueryHandler(button_handler))
 
-    print("🚀 البوت جاهز للتجربة الكاملة بجميع المميزات...")
-    app.run_polling()
+    print("🚀 البوت يعمل الآن...")
+    app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
