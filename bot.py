@@ -14,19 +14,20 @@ from telegram.ext import (
 
 # === الإعدادات الأساسية ===
 BOT_TOKEN = "8647094829:AAGod0gFDj9zmDVO2kiuDT2ynL68HBBUZjY"
-SUPER_ADMIN_ID = 6985307484  # المدير العام (أنت)
+SUPER_ADMIN_ID = 6985307484  # الآيدي الخاص بك (المدير العام)
 
 DATA_FILE = "school_system_data.json"
 
 # حالات المحادثات التفاعلية
 (
-    ADD_TEACHER_TYPE, ADD_TEACHER_STAGE, ADD_TEACHER_YEAR, ADD_TEACHER_SUB, ADD_TEACHER_ID, ADD_TEACHER_PASS,
+    ADD_TEACHER_TYPE, ADD_TEACHER_STAGE, ADD_TEACHER_YEAR, ADD_TEACHER_SUB, ADD_TEACHER_ID,
+    CHANGE_PASS_SELECT, CHANGE_PASS_NEW,
     LOGIN_PASS,
     ADD_CONTENT_STAGE, ADD_CONTENT_YEAR, ADD_CONTENT_SUB, ADD_CONTENT_TYPE, ADD_CONTENT_TITLE, ADD_CONTENT_FILE,
     STUDENT_MSG
-) = range(13)
+) = range(15)
 
-# === البيانات الأساسية للنظام التعليمي الجزائري ===
+# === الهيكلية الأساسية للنظام التعليمي الجزائري ===
 DEFAULT_STRUCTURE = {
     "stages": {
         "primary": {
@@ -52,7 +53,7 @@ DEFAULT_STRUCTURE = {
     "users": {
         str(SUPER_ADMIN_ID): {"role": "super_admin", "name": "المدير العام"}
     },
-    "passwords": {}, # word: user_data
+    "passwords": {}, # pass: user_info
     "content": {}    # key: list of items
 }
 
@@ -70,11 +71,11 @@ db = load_data()
 
 # === التحقق من الصلاحيات ===
 def get_user_role(user_id):
+    if user_id == SUPER_ADMIN_ID or str(user_id) == str(SUPER_ADMIN_ID):
+        return "super_admin", {"name": "المدير العام"}
     user = db["users"].get(str(user_id))
     if user:
         return user.get("role"), user
-    if user_id == SUPER_ADMIN_ID:
-        return "super_admin", {"name": "المدير العام"}
     return "student", None
 
 async def delete_previous_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -93,12 +94,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     role, user_info = get_user_role(user_id)
 
     keyboard = [
-        [InlineKeyboardButton("📚 التصفح حسب الطور والسنة", callback_data="select_stage")],
+        [InlineKeyboardButton("📚 التصفح حسب الطور والسنوات", callback_data="select_stage")],
         [InlineKeyboardButton("🔑 تسجيل الدخول بكلمة السر", callback_data="login_by_pass")]
     ]
 
     if role in ["super_admin", "stage_manager", "primary_teacher", "middle_teacher"]:
-        keyboard.append([InlineKeyboardButton("⚙️ لوحة تحكم الإدارة والتأطير", callback_data="admin_panel")])
+        keyboard.append([InlineKeyboardButton("⚙️ لوحة تحكم الإدارة والأستاذ", callback_data="admin_panel")])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     text = f"🇩🇿 **مرحباً بك في منصة التعليم الجزائرية الشاملة** 🏫\n\nحسابك الحالي: **{role}**\nاختر من القائمة أدناه:"
@@ -114,7 +115,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
         context.user_data["last_msg_id"] = msg.message_id
 
-# === معالجة التصفح العادي ===
+# === معالجة التصفح ===
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -141,7 +142,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = []
         for y_key, y_info in stage["years"].items():
             keyboard.append([InlineKeyboardButton(y_info["name"], callback_data=f"year_{stage_key}_{y_key}")])
-        keyboard.append([InlineKeyboardButton("🔙 العودة للجميع", callback_data="select_stage")])
+        keyboard.append([InlineKeyboardButton("🔙 العودة للأطوار", callback_data="select_stage")])
         await query.message.edit_text(f"📌 **{stage['name']}**\nاختر السنة الدراسية:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
     # 3. اختيار المادة
@@ -154,7 +155,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard.append([InlineKeyboardButton("🔙 العودة للسنوات", callback_data=f"stage_{stage_key}")])
         await query.message.edit_text(f"📖 **{year_info['name']}**\nاختر المادة الدراسية:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
-    # 4. عرض خيارات المحتوى المخصص (فيديو / صورة / شرح / ملخص)
+    # 4. عرض أقسام المحتوى للمادة (فيديو / صورة / شرح / ملخص)
     elif data.startswith("sub_"):
         parts = data.split("_", 3)
         stage_key, year_key, sub_name = parts[1], parts[2], parts[3]
@@ -169,7 +170,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         await query.message.edit_text(f"📌 **مادة {sub_name}**\nاختر نوع المحتوى المراد تصفحه:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
-    # 5. عرض قائمة المحتوى حسب التصنيف
+    # 5. عرض قوائم المحتوى
     elif data.startswith("show_cat_"):
         parts = data.replace("show_cat_", "").split("_")
         stage_key, year_key, c_type = parts[0], parts[1], parts[-1]
@@ -187,7 +188,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg_text = f"📂 **{type_str} لمادة {sub_name}:**" if items else f"⚠️ لا توجد محتويات مضافة حالياً في هذا القسم."
         await query.message.edit_text(msg_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
-    # 6. فتح ومصادقة الدرس
+    # 6. عرض العنصر
     elif data.startswith("view_item_"):
         parts = data.replace("view_item_", "").split("_")
         item_id = parts[-1]
@@ -215,7 +216,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             context.user_data["last_msg_id"] = sent.message_id
 
-    # ⚙️ لوحة الإدارة المتقدمة
+    # ⚙️ لوحة الإدارة
     elif data == "admin_panel":
         if role == "student":
             return
@@ -223,12 +224,32 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = []
         if role in ["super_admin", "stage_manager"]:
             keyboard.append([InlineKeyboardButton("➕ إضافة معلم / أستاذ جديد", callback_data="add_teacher_start")])
+            keyboard.append([InlineKeyboardButton("🔑 عرض جميع كلمات السر للأساتذة", callback_data="show_all_passwords")])
+            keyboard.append([InlineKeyboardButton("✏️ تغيير كلمة سر أستاذ", callback_data="change_pass_start")])
         
         keyboard.append([InlineKeyboardButton("➕ نشر درس / محتوى جديد", callback_data="add_content_start")])
         keyboard.append([InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="main_menu")])
 
-        text = f"⚙️ **لوحة التحكم الخاصة بك ({role}):**\n\nيمكنك إضافة الأساتذة والمعلمين وتسيير المحتوى حسب صلاحياتك."
+        text = f"⚙️ **لوحة تسيير النظام ({role}):**\n\nاختر الإجراء المناسب من القائمة:"
         await query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+    # عرض جميع كلمات السر (للمدراء فقط)
+    elif data == "show_all_passwords":
+        if role not in ["super_admin", "stage_manager"]:
+            return
+        
+        if not db["passwords"]:
+            msg_text = "🔑 لا توجد كلمات سر مسجلة حالياً."
+        else:
+            msg_text = "🔑 **قائمة كلمات السر الخاصة بالمؤطرين والأساتذة:**\n\n"
+            for code, u_info in db["passwords"].items():
+                role_name = u_info.get("role", "أستاذ")
+                sub = u_info.get("sub", "جميع المواد")
+                year = u_info.get("year", "")
+                msg_text += f"• **كلمة السر:** `{code}` | **الرتبة:** {role_name} ({year} - {sub})\n"
+
+        keyboard = [[InlineKeyboardButton("🔙 العودة للوحة الإدارة", callback_data="admin_panel")]]
+        await query.message.edit_text(msg_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
 # === 🔑 تسجيل الدخول بكلمة السر ===
 async def login_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -244,12 +265,12 @@ async def login_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
         info = db["passwords"][pass_code]
         db["users"][str(user_id)] = info
         save_data(db)
-        await update.message.reply_text(f"✅ تم التعرف عليك بنجاح! تم منحك صلاحية: **{info['role']}**\n\nاضغط /start لفتح اللوحة.")
+        await update.message.reply_text(f"✅ تم التعرف عليك بنجاح! تم منحك صلاحية: **{info['role']}**\n\nاضغط /start لفتح لوحة التحكم الخاصة بك.")
     else:
-        await update.message.reply_text("❌ كلمة السر غير صحيحة!")
+        await update.message.reply_text("❌ كلمة السر غير صحيحة! تأكد منها من المدير العام.")
     return ConversationHandler.END
 
-# === ➕ إضافة معلم / أستاذ (حسب النظام الجزائري) ===
+# === ➕ إضافة معلم / أستاذ وتوليد كلمة سر ===
 async def add_teacher_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     role, _ = get_user_role(query.from_user.id)
@@ -260,7 +281,7 @@ async def add_teacher_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard.append([InlineKeyboardButton("معلم ابتدائي (سنة كاملة)", callback_data="type_primary_teacher")])
     keyboard.append([InlineKeyboardButton("أستاذ متوسط (مادة معينة)", callback_data="type_middle_teacher")])
 
-    await query.message.edit_text("اختر **رتبة/نوع المؤطر** المراد إضافته:", reply_markup=InlineKeyboardMarkup(keyboard))
+    await query.message.edit_text("اختر **نوع الرتبة** المراد إضافتها:", reply_markup=InlineKeyboardMarkup(keyboard))
     return ADD_TEACHER_TYPE
 
 async def add_teacher_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -273,7 +294,7 @@ async def add_teacher_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = []
         for y_key, y_info in db["stages"]["primary"]["years"].items():
             keyboard.append([InlineKeyboardButton(y_info["name"], callback_data=f"tyear_primary_{y_key}")])
-        await query.message.edit_text("اختر **السنة الدراسية** التي يدرسها معلم الابتدائي:", reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.message.edit_text("اختر **السنة الدراسية** لمعلم الابتدائي:", reply_markup=InlineKeyboardMarkup(keyboard))
         return ADD_TEACHER_YEAR
 
     elif t_type == "middle_teacher":
@@ -284,12 +305,12 @@ async def add_teacher_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ADD_TEACHER_YEAR
 
     elif t_type == "stage_manager":
-        keyboard = [
-            [InlineKeyboardButton("الطور الابتدائي", callback_data="tstg_primary")],
-            [InlineKeyboardButton("الطور المتوسط", callback_data="tstg_middle")]
-        ]
-        await query.message.edit_text("اختر الطور التابع لإدارة المدير:", reply_markup=InlineKeyboardMarkup(keyboard))
-        return ADD_TEACHER_STAGE
+        random_pass = secrets.token_hex(3)
+        user_info = {"role": "stage_manager"}
+        db["passwords"][random_pass] = user_info
+        save_data(db)
+        await query.message.edit_text(f"✅ تم إنشاء حساب **مدير طور**!\n\n🔑 كلمة السر الخاصة به: `{random_pass}`", parse_mode="Markdown")
+        return ConversationHandler.END
 
 async def add_teacher_year(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -303,51 +324,74 @@ async def add_teacher_year(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = []
         for sub in subjects:
             keyboard.append([InlineKeyboardButton(sub, callback_data=f"tsub_{sub}")])
-        await query.message.edit_text("اختر **المادة الدراسية** التي يدرسها الأستاذ:", reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.message.edit_text("اختر **المادة الدراسية** للأستاذ:", reply_markup=InlineKeyboardMarkup(keyboard))
         return ADD_TEACHER_SUB
     else:
-        await query.message.edit_text("أرسل الآن **معرف (ID) التلجرام الخاص بالمدرس** (أو اكتب 0 لإنشاء كلمة سر فقط):")
-        return ADD_TEACHER_ID
+        random_pass = secrets.token_hex(3)
+        user_info = {
+            "role": "primary_teacher",
+            "stage": "primary",
+            "year": y_key
+        }
+        db["passwords"][random_pass] = user_info
+        save_data(db)
+        await query.message.edit_text(f"✅ تم إنشاء حساب **معلم ابتدائي**!\n\n🔑 كلمة السر الخاصة به: `{random_pass}`\n📌 السنة الدراسية: {y_key}", parse_mode="Markdown")
+        return ConversationHandler.END
 
 async def add_teacher_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    context.user_data["t_sub"] = query.data.replace("tsub_", "")
-    await query.message.edit_text("أرسل الآن **معرف (ID) التلجرام الخاص بالأستاذ** (أو اكتب 0):")
-    return ADD_TEACHER_ID
-
-async def add_teacher_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    t_id = update.message.text.strip()
-    context.user_data["t_id"] = t_id
+    sub_name = query.data.replace("tsub_", "")
     
-    # توليد كلمة سر أوتوماتيكية
     random_pass = secrets.token_hex(3)
-    context.user_data["t_pass"] = random_pass
-
-    t_type = context.user_data["t_type"]
     user_info = {
-        "role": t_type,
-        "stage": context.user_data.get("t_stage"),
-        "year": context.user_data.get("t_year"),
-        "sub": context.user_data.get("t_sub")
+        "role": "middle_teacher",
+        "stage": "middle",
+        "year": context.user_data["t_year"],
+        "sub": sub_name
     }
-
-    if t_id != "0":
-        db["users"][t_id] = user_info
-    
     db["passwords"][random_pass] = user_info
     save_data(db)
 
-    msg = (
-        f"✅ **تم إنشاء حساب المؤطر بنجاح!**\n\n"
-        f"👤 **الرتبة:** {t_type}\n"
-        f"🔑 **كلمة السر الخاصة به:** `{random_pass}`\n\n"
-        f"قم بإعطاء كلمة السر هذه للمدرس ليقوم بإدخالها في البوت والبدء بالنشر."
-    )
-    await update.message.reply_text(msg, parse_mode="Markdown")
+    await query.message.edit_text(f"✅ تم إنشاء حساب **أستاذ متوسط**!\n\n🔑 كلمة السر الخاصة به: `{random_pass}`\n📖 المادة: {sub_name}", parse_mode="Markdown")
     return ConversationHandler.END
 
-# === ➕ إضافة درس ومحتوى جديد ===
+# === ✏️ تغيير كلمة سر أستاذ ===
+async def change_pass_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not db["passwords"]:
+        await query.message.edit_text("لا توجد كلمات سر مسجلة لتغييرها.")
+        return ConversationHandler.END
+
+    keyboard = []
+    for code, info in db["passwords"].items():
+        sub = info.get("sub", info.get("role"))
+        keyboard.append([InlineKeyboardButton(f"تغيير كود ({code}) - {sub}", callback_data=f"chg_{code}")])
+
+    await query.message.edit_text("اختر كلمة السر المراد تعديلها:", reply_markup=InlineKeyboardMarkup(keyboard))
+    return CHANGE_PASS_SELECT
+
+async def change_pass_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    old_code = query.data.replace("chg_", "")
+    context.user_data["old_code"] = old_code
+
+    await query.message.edit_text(f"أدخل **كلمة السر الجديدة** بدلاً من `{old_code}`:", parse_mode="Markdown")
+    return CHANGE_PASS_NEW
+
+async def change_pass_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    new_code = update.message.text.strip()
+    old_code = context.user_data["old_code"]
+
+    if old_code in db["passwords"]:
+        info = db["passwords"].pop(old_code)
+        db["passwords"][new_code] = info
+        save_data(db)
+        await update.message.reply_text(f"✅ تم تغيير كلمة السر بنجاح إلى: `{new_code}`", parse_mode="Markdown")
+    return ConversationHandler.END
+
+# === ➕ إضافة محتوى ودرس جديد ===
 async def add_content_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
@@ -359,7 +403,7 @@ async def add_content_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         subjects = db["stages"]["primary"]["years"][info["year"]]["subjects"]
         keyboard = [[InlineKeyboardButton(s, callback_data=f"csub_{s}")] for s in subjects]
-        await query.message.edit_text("اختر **المادة الدراسية** لرفع الدرس بها:", reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.message.edit_text("اختر **المادة الدراسية** لنشر الدرس فيها:", reply_markup=InlineKeyboardMarkup(keyboard))
         return ADD_CONTENT_SUB
 
     elif role == "middle_teacher":
@@ -375,7 +419,6 @@ async def add_content_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ADD_CONTENT_TYPE
 
     else:
-        # للمدراء (إمكانية اختيار كل الأطوار)
         keyboard = [
             [InlineKeyboardButton("الطور الابتدائي", callback_data="cstg_primary")],
             [InlineKeyboardButton("الطور المتوسط", callback_data="cstg_middle")]
@@ -421,7 +464,7 @@ async def add_content_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     context.user_data["c_type"] = query.data.replace("ctype_", "")
-    await query.message.edit_text("أرسل الآن **عنوان المحتوى/الدرس**:")
+    await query.message.edit_text("أرسل الآن **عنوان الدرس / المحتوى**:")
     return ADD_CONTENT_TITLE
 
 async def add_content_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -429,9 +472,9 @@ async def add_content_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     c_type = context.user_data["c_type"]
     
     if c_type == "text":
-        await update.message.reply_text("أرسل الآن **نص الشرح الكامل** للدرس:")
+        await update.message.reply_text("أرسل الآن **الشرح النصي الكامل**:")
     else:
-        await update.message.reply_text(f"أرسل الآن **ملف الـ {c_type}** المرفق مع الدرس:")
+        await update.message.reply_text(f"أرسل الآن **ملف {c_type}** الخاص بالدرس:")
     return ADD_CONTENT_FILE
 
 async def add_content_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -462,7 +505,7 @@ async def add_content_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     })
     save_data(db)
 
-    await update.message.reply_text("✅ تم نشر المحتوى بنجاح في قسم المادة المحدد!")
+    await update.message.reply_text("✅ تم نشر الدرس بنجاح للطلاب!")
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -473,7 +516,6 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # محادثة تسجيل الدخول
     login_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(login_start, pattern="^login_by_pass$")],
         states={
@@ -483,20 +525,27 @@ def main():
         per_message=False
     )
 
-    # محادثة إضافة أستاذ
     add_teacher_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(add_teacher_start, pattern="^add_teacher_start$")],
         states={
             ADD_TEACHER_TYPE: [CallbackQueryHandler(add_teacher_type, pattern="^type_")],
             ADD_TEACHER_YEAR: [CallbackQueryHandler(add_teacher_year, pattern="^tyear_")],
-            ADD_TEACHER_SUB: [CallbackQueryHandler(add_teacher_sub, pattern="^tsub_")],
-            ADD_TEACHER_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_teacher_id)]
+            ADD_TEACHER_SUB: [CallbackQueryHandler(add_teacher_sub, pattern="^tsub_")]
         },
         fallbacks=[CommandHandler("cancel", cancel)],
         per_message=False
     )
 
-    # محادثة إضافة محتوى
+    change_pass_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(change_pass_start, pattern="^change_pass_start$")],
+        states={
+            CHANGE_PASS_SELECT: [CallbackQueryHandler(change_pass_select, pattern="^chg_")],
+            CHANGE_PASS_NEW: [MessageHandler(filters.TEXT & ~filters.COMMAND, change_pass_new)]
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+        per_message=False
+    )
+
     add_content_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(add_content_start, pattern="^add_content_start$")],
         states={
@@ -514,10 +563,11 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(login_conv)
     app.add_handler(add_teacher_conv)
+    app.add_handler(change_pass_conv)
     app.add_handler(add_content_conv)
     app.add_handler(CallbackQueryHandler(button_handler))
 
-    print("🚀 المنصة التعليمية الجزائرية جاهزة وتعمل الآن...")
+    print("🚀 المنصة التعليمية الجزائرية تعمل الآن...")
     app.run_polling()
 
 if __name__ == "__main__":
