@@ -13,26 +13,19 @@ from telegram.ext import (
     ConversationHandler,
 )
 
-# إعداد اللوج لمعرفة الأخطاء في GitHub Actions
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+logging.basicConfig(level=logging.INFO)
 
-# === التوكن الجديد والمُعرف الخاص بك ===
 BOT_TOKEN = "8673709137:AAHHeT3uVc17MaXJyvTX4GlAtA8si7V6bVc"
-MY_USER_ID = 6985307484  # الآيدي الخاص بك كمدير عام
+MY_USER_ID = 6985307484
 
 DATA_FILE = "school_system_data.json"
 
-# حالات المحادثات التفاعلية
 (
     ADD_TEACHER_TYPE, ADD_TEACHER_YEAR, ADD_TEACHER_SUB,
     LOGIN_PASS,
     ADD_CONTENT_STAGE, ADD_CONTENT_YEAR, ADD_CONTENT_SUB, ADD_CONTENT_TYPE, ADD_CONTENT_TITLE, ADD_CONTENT_FILE
 ) = range(10)
 
-# === الهيكلية الأساسية للنظام التعليمي الجزائري ===
 DEFAULT_STRUCTURE = {
     "stages": {
         "primary": {
@@ -56,7 +49,7 @@ DEFAULT_STRUCTURE = {
         }
     },
     "users": {
-        str(MY_USER_ID): {"role": "super_admin", "name": "المدير العام والتنفيذي"}
+        str(MY_USER_ID): {"role": "super_admin", "name": "المدير العام"}
     },
     "passwords": {
         "admin123": {"role": "super_admin", "name": "المدير العام"}
@@ -74,18 +67,18 @@ def load_data():
                 if "users" not in data:
                     data["users"] = {}
                 data["passwords"]["admin123"] = {"role": "super_admin", "name": "المدير العام"}
-                data["users"][str(MY_USER_ID)] = {"role": "super_admin", "name": "المدير العام والتنفيذي"}
+                data["users"][str(MY_USER_ID)] = {"role": "super_admin", "name": "المدير العام"}
                 return data
-        except Exception as e:
-            logging.error(f"Error loading JSON: {e}")
+        except Exception:
+            pass
     return DEFAULT_STRUCTURE
 
 def save_data(data):
     try:
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
-    except Exception as e:
-        logging.error(f"Error saving JSON: {e}")
+    except Exception:
+        pass
 
 db = load_data()
 
